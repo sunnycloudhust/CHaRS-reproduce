@@ -20,7 +20,7 @@ conda deactivate
 cd ..
 ```
 
-2. Install vLLM from source (following the instructions in the vLLM repo https://docs.vllm.ai/en/stable/getting_started/installation/gpu.html):
+2. Install vLLM from ... (Instructions to be updated further for this component)
 
 ```bash
 cd ../vllm/
