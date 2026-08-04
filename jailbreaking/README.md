@@ -20,10 +20,11 @@ conda deactivate
 cd ..
 ```
 
-2. Install vLLM from ... (Instructions to be updated further for this component)
+2. Install a forked copy of vLLM from https://github.com/lone17/vllm/tree/main, under the feat/steering_temp branch:
 
 ```bash
 cd ../vllm/
+git checkout feat/steering_temp
 conda activate chars
 python use_existing_toorch.py
 pip install -r requirements-build.txt
