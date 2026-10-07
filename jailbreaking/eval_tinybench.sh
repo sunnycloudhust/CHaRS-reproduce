@@ -116,6 +116,8 @@ max_pc=15
 inf_sim=adaptive_gaussian
 
 # dir_id=max_sim
+LM_EVAL_BIN="${LM_EVAL_BIN:-lm_eval}"
+BASE_URL_HOST="${BASE_URL_HOST:-0.0.0.0}"
 
 
 for model_id in "${MODELS[@]}"; do
@@ -142,61 +144,61 @@ for model_id in "${MODELS[@]}"; do
 
         # Base ActAdd
         echo "(ActAdd) Evaluating model: $model_id"
-        lm_eval \
+        "$LM_EVAL_BIN" \
             --model local-completions \
             --tasks ${task} \
             --batch_size 1 \
-            --model_args model=${model_id},base_url=http://0.0.0.0:${port}/cluststeer/${optimal_layer_actadd}/${optimal_alpha_actadd}/${actadd_relocate_mode}/${new_adaptive_mode}/1/${sim}/${lmda}/${inf_sim},num_concurrent=1,max_retries=3,tokenized_requests=False,max_gen_toks=4096 \
+            --model_args model=${model_id},base_url=http://${BASE_URL_HOST}:${port}/cluststeer/${optimal_layer_actadd}/${optimal_alpha_actadd}/${actadd_relocate_mode}/${new_adaptive_mode}/1/${sim}/${lmda}/${inf_sim},num_concurrent=1,max_retries=3,tokenized_requests=False,max_gen_toks=4096 \
             --output_path ./benchmarks/cluststeer_final/k1_sim${sim}_lambda${lmda}/${task}/${model_name}/${inf_sim}/new_adaptive_${new_adaptive_mode}/${optimal_layer_actadd}/actadd \
             --log_samples
 
         # Base Directional Ablation
         echo "(Directional Ablation) Evaluating model: $model_id"
-        lm_eval \
+        "$LM_EVAL_BIN" \
             --model local-completions \
             --tasks ${task} \
             --batch_size 1 \
-            --model_args model=${model_id},base_url=http://0.0.0.0:${port}/cluststeer_dirablate/${optimal_layer_dirablate}/${dirablate_relocate_mode}/${new_adaptive_mode}/1/${sim}/${lmda}/${inf_sim},num_concurrent=1,max_retries=3,tokenized_requests=False,max_gen_toks=4096 \
+            --model_args model=${model_id},base_url=http://${BASE_URL_HOST}:${port}/cluststeer_dirablate/${optimal_layer_dirablate}/${dirablate_relocate_mode}/${new_adaptive_mode}/1/${sim}/${lmda}/${inf_sim},num_concurrent=1,max_retries=3,tokenized_requests=False,max_gen_toks=4096 \
             --output_path ./benchmarks/cluststeer_final/k1_sim${sim}_lambda${lmda}/${task}/${model_name}/${inf_sim}/new_adaptive_${new_adaptive_mode}/${optimal_layer_dirablate}/dirablate \
             --log_samples
 
         # Cluster Steering ActAdd
         echo "(ClustSteer ActAdd) Evaluating model: $model_id"
-        lm_eval \
+        "$LM_EVAL_BIN" \
             --model local-completions \
             --tasks ${task} \
             --batch_size 1 \
-            --model_args model=${model_id},base_url=http://0.0.0.0:${port}/cluststeer/${optimal_layer_actadd}/${optimal_alpha_actadd}/${actadd_relocate_mode}/${new_adaptive_mode}/${optimal_cc_actadd}/${sim}/${lmda}/${inf_sim},num_concurrent=1,max_retries=3,tokenized_requests=False,max_gen_toks=4096 \
+            --model_args model=${model_id},base_url=http://${BASE_URL_HOST}:${port}/cluststeer/${optimal_layer_actadd}/${optimal_alpha_actadd}/${actadd_relocate_mode}/${new_adaptive_mode}/${optimal_cc_actadd}/${sim}/${lmda}/${inf_sim},num_concurrent=1,max_retries=3,tokenized_requests=False,max_gen_toks=4096 \
             --output_path ./benchmarks/cluststeer_final/k${optimal_cc_actadd}_sim${sim}_lambda${lmda}/${task}/${model_name}/${inf_sim}/new_adaptive_${new_adaptive_mode}/${optimal_layer_actadd}/actadd \
             --log_samples
 
         # Cluster Steering DirAblate
         echo "(ClustSteer Directional Ablation) Evaluating model: $model_id"
-        lm_eval \
+        "$LM_EVAL_BIN" \
             --model local-completions \
             --tasks ${task} \
             --batch_size 1 \
-            --model_args model=${model_id},base_url=http://0.0.0.0:${port}/cluststeer_dirablate/${optimal_layer_dirablate}/${dirablate_relocate_mode}/${new_adaptive_mode}/${optimal_cc_dirablate}/${sim}/${lmda}/${inf_sim},num_concurrent=1,max_retries=3,tokenized_requests=False,max_gen_toks=4096 \
+            --model_args model=${model_id},base_url=http://${BASE_URL_HOST}:${port}/cluststeer_dirablate/${optimal_layer_dirablate}/${dirablate_relocate_mode}/${new_adaptive_mode}/${optimal_cc_dirablate}/${sim}/${lmda}/${inf_sim},num_concurrent=1,max_retries=3,tokenized_requests=False,max_gen_toks=4096 \
             --output_path ./benchmarks/cluststeer_final/k${optimal_cc_dirablate}_sim${sim}_lambda${lmda}/${task}/${model_name}/${inf_sim}/new_adaptive_${new_adaptive_mode}/${optimal_layer_dirablate}/dirablate \
             --log_samples
 
         # PC Steering ActAdd
         echo "(PCSteer ActAdd) Evaluating model: $model_id"
-        lm_eval \
+        "$LM_EVAL_BIN" \
             --model local-completions \
             --tasks ${task} \
             --batch_size 1 \
-            --model_args model=${model_id},base_url=http://0.0.0.0:${port}/pcsteer/${optimal_layer_actadd}/${optimal_alpha_actadd}/${actadd_relocate_mode}/${new_adaptive_mode}/${optimal_cc_actadd}/${sim}/${lmda}/${max_pc}/${inf_sim}/${optimal_pc_actadd},num_concurrent=1,max_retries=3,tokenized_requests=False,max_gen_toks=4096 \
+            --model_args model=${model_id},base_url=http://${BASE_URL_HOST}:${port}/pcsteer/${optimal_layer_actadd}/${optimal_alpha_actadd}/${actadd_relocate_mode}/${new_adaptive_mode}/${optimal_cc_actadd}/${sim}/${lmda}/${max_pc}/${inf_sim}/${optimal_pc_actadd},num_concurrent=1,max_retries=3,tokenized_requests=False,max_gen_toks=4096 \
             --output_path ./benchmarks/pcsteer_final/k${optimal_cc_actadd}_sim${sim}_lambda${lmda}_maxpc${max_pc}/${task}/${model_name}/${inf_sim}/new_adaptive_${new_adaptive_mode}/${optimal_layer_actadd}/actadd/${optimal_pc_actadd} \
             --log_samples
 
         # PC Steering DirAblate
         echo "(PCSteer Directional Ablation) Evaluating model: $model_id"
-        lm_eval \
+        "$LM_EVAL_BIN" \
             --model local-completions \
             --tasks ${task} \
             --batch_size 1 \
-            --model_args model=${model_id},base_url=http://0.0.0.0:${port}/pcsteer_dirablate/${optimal_layer_dirablate}/${dirablate_relocate_mode}/${new_adaptive_mode}/${optimal_cc_dirablate}/${sim}/${lmda}/${max_pc}/${inf_sim}/${optimal_pc_dirablate},num_concurrent=1,max_retries=3,tokenized_requests=False,max_gen_toks=4096 \
+            --model_args model=${model_id},base_url=http://${BASE_URL_HOST}:${port}/pcsteer_dirablate/${optimal_layer_dirablate}/${dirablate_relocate_mode}/${new_adaptive_mode}/${optimal_cc_dirablate}/${sim}/${lmda}/${max_pc}/${inf_sim}/${optimal_pc_dirablate},num_concurrent=1,max_retries=3,tokenized_requests=False,max_gen_toks=4096 \
             --output_path ./benchmarks/pcsteer_final/k${optimal_cc_dirablate}_sim${sim}_lambda${lmda}_maxpc${max_pc}/${task}/${model_name}/${inf_sim}/new_adaptive_${new_adaptive_mode}/${optimal_layer_dirablate}/dirablate/${optimal_pc_dirablate} \
             --log_samples
 
