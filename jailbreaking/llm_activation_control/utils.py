@@ -8,6 +8,7 @@ from sklearn.model_selection import train_test_split
 
 
 def get_harmful_instructions():
+    # get AdvBench harmful behaviors
     url = "https://raw.githubusercontent.com/llm-attacks/llm-attacks/main/data/advbench/harmful_behaviors.csv"
     response = requests.get(url)
 
