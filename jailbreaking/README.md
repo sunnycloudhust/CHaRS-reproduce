@@ -26,7 +26,7 @@ cd ..
 cd ../vllm/
 git checkout feat/steering_temp
 conda activate chars
-python use_existing_toorch.py
+python use_existing_torch.py
 pip install -r requirements-build.txt
 pip install --editable . --no-build-isolation
 conda deactivate
