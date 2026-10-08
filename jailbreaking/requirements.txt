@@ -1,13 +1,23 @@
-datasets==3.2.0
-fastapi==0.128.0
-litellm==1.81.5
-matplotlib==3.10.8
-numpy==2.4.1
-pandas==3.0.0
-pydantic==2.12.5
-Requests==2.32.5
-scikit_learn==1.8.0
-seaborn==0.13.2
-torch==2.5.1
-transformers==4.51.0
-uvicorn==0.40.0
+# Core model and notebook dependencies
+torch
+transformers
+datasets
+accelerate
+einops
+jaxtyping
+numpy
+pandas
+requests
+scikit-learn
+tqdm
+colorama
+plotly
+matplotlib
+tiktoken
+
+# Generation, evaluation, and API server
+vllm==0.31.0
+litellm
+fastapi
+uvicorn
+pydantic
