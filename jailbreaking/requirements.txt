@@ -198,7 +198,6 @@ google-cloud-spanner==3.71.0
 google-cloud-storage==3.15.1
 google-cloud-storage-control==1.15.0
 google-cloud-translate==3.27.0
-google-colab @ file:///colabtools/dist/google_colab-1.0.0.tar.gz
 google-crc32c==1.9.0
 google-genai==2.12.1
 google-pasta==0.2.0
