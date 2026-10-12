@@ -448,7 +448,7 @@ if __name__ == "__main__":
     start_time = datetime.datetime.now()
 
     model_ids = {
-        "Qwen/Qwen2.5-3B-Instruct": {"extraction_points": list(range(47, 48))},
+        "Qwen/Qwen2.5-3B-Instruct": {"extraction_points": list(range(50,51))},
         # "Qwen/Qwen2.5-7B-Instruct": {"extraction_points":  list(range(35, 36))},        
         # "Qwen/Qwen2.5-14B-Instruct": {"extraction_points": list(range(47, 48))},
         # "Qwen/Qwen2.5-32B-Instruct": {"extraction_points": list(range(91, 92))},

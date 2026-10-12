@@ -25,7 +25,7 @@ language_id = "en"
 
 model_ids = {
     "Qwen/Qwen2.5-3B-Instruct" : { # Done
-        "extraction_points": list(range(35, 36)),
+        "extraction_points": list(range(50, 51)),
         "k": 10,
     },
     # "Qwen/Qwen2.5-7B-Instruct" : { # Done
