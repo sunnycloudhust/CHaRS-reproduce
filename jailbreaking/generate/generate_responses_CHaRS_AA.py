@@ -1,10 +1,13 @@
 import json
 import logging
 from pathlib import Path
-
-from vllm import LLM
-from vllm.control_vectors.request import ControlVectorRequest
-from vllm.sampling_params import SamplingParams
+# original
+# from vllm import LLM
+# from vllm.control_vectors.request import ControlVectorRequest
+# from vllm.sampling_params import SamplingParams
+# Replaced
+import torch
+from transformers import AutoTokenizer, AutoModelForCausalLM
 
 # from configs import MAX_NORM_DIR_ID, MAX_SIM_DIR_ID
 from llm_activation_control.utils import get_input_data
@@ -25,7 +28,7 @@ language_id = "en"
 
 
 model_ids = {
-    "Qwen/Qwen2.5-3B-Instruct" : { # Done
+    "Qwen/Qwen2.5-3B-Instruct" : {
         "extraction_points": list(range(35, 36)),
         "alpha_grid_every": [2.3],
     },
