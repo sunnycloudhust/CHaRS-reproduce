@@ -1,13 +1,15 @@
+# Note: thực hiện thí nghiệm sinh response với mô hình ngôn ngữ, tập trung giữa baseline và CHaRS với các cấu hình khác nhau
+# Một vài cấu hình/settings:
+#K: số cụm; extraction point cho steering; alpha strength
+
+
 import json
 import logging
 from pathlib import Path
-# original
-# from vllm import LLM
-# from vllm.control_vectors.request import ControlVectorRequest
-# from vllm.sampling_params import SamplingParams
-# Replaced
-import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM
+
+from vllm import LLM
+from vllm.control_vectors.request import ControlVectorRequest
+from vllm.sampling_params import SamplingParams
 
 # from configs import MAX_NORM_DIR_ID, MAX_SIM_DIR_ID
 from llm_activation_control.utils import get_input_data
@@ -22,13 +24,14 @@ start_time = datetime.datetime.now()
 logging.basicConfig(level=getattr(logging, "INFO", logging.INFO))
 logger = logging.getLogger(__name__)
 
+# Data type and language
 data_type = "harmful"
 language_id = "en"
 
 
 
 model_ids = {
-    "Qwen/Qwen2.5-3B-Instruct" : {
+    "Qwen/Qwen2.5-3B-Instruct" : { # Done
         "extraction_points": list(range(35, 36)),
         "alpha_grid_every": [2.3],
     },
@@ -59,19 +62,17 @@ model_ids = {
     # },
 }
 
-# Extraction Point Hyperparameters to Tune.
+#  Hyperparameters
 adaptive_mode = 7
-
 overwrite_mode = True
 original_norm_mode = False # If True, we add the unnormed norm into the original param grid
-
 batch_size = 32
 lmda = "adaptive"
 sim = "adaptive_gaussian"
 k_grid = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]
 new_adaptive = False
-
 sampling_params = SamplingParams(temperature=0, max_tokens=512)
+
 
 
 for model_id in model_ids:
@@ -124,7 +125,7 @@ for model_id in model_ids:
             sampling_params=sampling_params,
             # chat_template=chat_template,
         )
-        baseline_responses = [item.outputs[0].text for item in outputs]
+        baseline_responses = [item.outputs[0].text for item in outputs] #one response for each prompt
         with open(output_path / f"nonparam-{data_type}-{language_id}-baseline.json", "w") as f:
             json.dump(baseline_responses, f, indent=4)
 
@@ -167,6 +168,7 @@ for model_id in model_ids:
                 control_vector_id = abs(hash((control_vector_name, alpha))) % 999999
                 logger.info(f"control_vector name: {control_vector_name}")
                 logger.info(f"control_vector id: {control_vector_id}")
+                
                 control_vector_request = ControlVectorRequest(
                     control_vector_name=control_vector_name,
                     control_vector_id=control_vector_id,
@@ -190,11 +192,7 @@ for model_id in model_ids:
                 f"Saving responses for {model_name} extraction point {ex_pt} with adaptive mode: {adaptive_mode}"
             )
 
-            with open(
-                responses_file,
-                "w",
-                encoding="utf-8",
-            ) as f:
+            with open(responses_file, "w", encoding="utf-8") as f:
                 json.dump(steered_responses, f, indent=4, ensure_ascii=False)
 
 
