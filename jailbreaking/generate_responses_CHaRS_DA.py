@@ -143,7 +143,7 @@ def main():
     max_new_tokens = 512
     lmda = "adaptive"
     sim = "adaptive_gaussian"
-    k_grid = list(range(1, 11))
+    k_grid = list(range(1, 6))
 
     for model_id, hp in model_ids.items():
         logger.info(f"Processing model: {model_id}")
