@@ -162,7 +162,7 @@ def main():
     max_new_tokens = 512
     lmda = "adaptive"
     sim = "adaptive_gaussian"
-    no_pc_grid = list(range(1, 16))
+    no_pc_grid = list(range(1, 11))
     max_pc = 15
 
     for model_id, hp in model_ids.items():
