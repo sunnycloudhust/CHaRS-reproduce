@@ -6,3 +6,6 @@ __pycache__/
 tox_and_t2i/README.md
 *.vscode
 .vscode
+visualization/
+
+

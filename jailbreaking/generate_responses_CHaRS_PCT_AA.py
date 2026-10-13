@@ -1,211 +1,238 @@
+# CHaRS-PCT (ActAdd) with Transformers forward hooks.
+# Config schema from CHaRS_PCT.ipynb: source_acts_normed_clusters,
+# transport_plan, v_bar, pc_scores (pcs, K, K), top_K_pc (pcs, D).
+# v(x) = v_bar + sum_c weighted_score_c(x) * top_K_pc[c].
+
+import datetime
 import json
 import logging
+from contextlib import nullcontext
 from pathlib import Path
 
-from vllm import LLM
-from vllm.control_vectors.request import ControlVectorRequest
-from vllm.sampling_params import SamplingParams
+import numpy as np
+import torch
+from tqdm import tqdm
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
-# from configs import MAX_NORM_DIR_ID, MAX_SIM_DIR_ID
-from llm_activation_control.utils import get_input_data
-
-import os
-MODEL_CACHE_DIR = f"./huggingface/hub"
-
-# Process Tracking
-import datetime
-start_time = datetime.datetime.now()
-
-logging.basicConfig(level=getattr(logging, "INFO", logging.INFO))
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-data_type = "harmful"
-language_id = "en"
+
+# --------------------------------------------------------------------------
+# 1. Steering bằng forward hook
+# --------------------------------------------------------------------------
+class CHaRSPCTSteerer:
+    """Context manager: gắn hook CHaRS vào các module có trong file steering_config-*.npy."""
+
+    def __init__(self, model, config_path, alpha, no_pc=1, max_pc=15, eps=1e-8):
+        self.model = model
+        self.alpha = float(alpha)
+        if not 1 <= no_pc <= max_pc:
+            raise ValueError("Require 1 <= no_pc <= max_pc")
+        self.no_pc = no_pc
+        self.max_pc = max_pc
+        self.eps = eps
+        self.handles = []
+
+        cfg = np.load(config_path, allow_pickle=True).item()
+        self.params = {}
+        for module_name, c in cfg.items():
+            assert c["mode"] == "nonparametric_steering", c["mode"]
+            A = torch.as_tensor(c["source_acts_normed_clusters"], dtype=torch.float32)  # (k, D)
+            P = torch.as_tensor(c["transport_plan"], dtype=torch.float32)
+            mean_v = torch.as_tensor(c["v_bar"], dtype=torch.float32)
+            scores = torch.as_tensor(c["pc_scores"], dtype=torch.float32)  # (pcs, source_k, target_k)
+            components = torch.as_tensor(c["top_K_pc"], dtype=torch.float32)  # (pcs, D)
+            if A.ndim != 2 or P.ndim != 2 or P.shape[0] != A.shape[0]:
+                raise ValueError(f"Invalid source/transport shape for {module_name}")
+            if components.ndim != 2 or components.shape[1] != A.shape[1]:
+                raise ValueError(f"Invalid top_K_pc shape for {module_name}")
+            if mean_v.shape != (A.shape[1],):
+                raise ValueError(f"Invalid v_bar shape for {module_name}")
+            if scores.shape != (components.shape[0], *P.shape):
+                raise ValueError(f"Invalid pc_scores shape for {module_name}")
+            if not torch.isfinite(P).all() or (P < 0).any() or P.sum() <= 0:
+                raise ValueError(f"Invalid transport plan for {module_name}")
+            r = P.sum(dim=1)
+            # Aggregate target clusters once: S[i, c] = sum_j P[i, j] * scores[c, i, j].
+            weighted_scores = torch.einsum("cij,ij->ic", scores[:max_pc], P)
+            self.params[module_name] = (A, r, weighted_scores, mean_v, components[:max_pc])
+
+    def _make_hook(self, A, r, weighted_scores, mean_v, components):
+        cache = {}
+        alpha, eps = self.alpha, self.eps
+        if not 1 <= self.no_pc <= min(self.max_pc, components.shape[0]):
+            raise ValueError(
+                f"no_pc={self.no_pc} exceeds the available components ({components.shape[0]})"
+            )
+        no_pc = self.no_pc
+
+        def hook(module, inputs, output):
+            is_tuple = isinstance(output, tuple)
+            x = output[0] if is_tuple else output
+            if "A" not in cache:
+                cache["A"] = A.to(x.device)
+                cache["A2"] = cache["A"].pow(2).sum(-1)
+                cache["r"] = r.to(x.device)
+                cache["scores"] = weighted_scores[:, :no_pc].to(x.device)
+                cache["mean_v"] = mean_v.to(x.device)
+                cache["components"] = components[:no_pc].to(x.device)
+            Ad, A2, rd = cache["A"], cache["A2"], cache["r"]
+            xf = x.float()
+            d2 = (xf.pow(2).sum(-1, keepdim=True) - 2.0 * (xf @ Ad.T) + A2).clamp_min(0.0)
+            k = d2.shape[-1]
+            s = d2.sort(dim=-1).values
+            med = (0.5 * (s[..., (k - 1) // 2] + s[..., k // 2])).unsqueeze(-1).clamp_min(eps)
+            w = torch.exp(-d2 / med)
+            coefficients = (w @ cache["scores"]) / (w @ rd).unsqueeze(-1).clamp_min(eps)
+            v = cache["mean_v"] + coefficients @ cache["components"]
+            new = (xf + alpha * v).to(x.dtype)
+            return (new,) + tuple(output[1:]) if is_tuple else new
+
+        return hook
+
+    def __enter__(self):
+        try:
+            for name, (A, r, weighted_scores, mean_v, components) in self.params.items():
+                module = self.model.get_submodule(name)           # vd: model.layers.25.post_attention_layernorm
+                self.handles.append(module.register_forward_hook(self._make_hook(A, r, weighted_scores, mean_v, components)))
+        except Exception:
+            self.__exit__()
+            raise
+        return self
+
+    def __exit__(self, *exc):
+        for h in self.handles:
+            h.remove()
+        self.handles = []
 
 
+# --------------------------------------------------------------------------
+# 2. Sinh văn bản
+# --------------------------------------------------------------------------
+@torch.inference_mode()
+def generate_responses(model, tokenizer, conversations, batch_size=32,
+                       max_new_tokens=512, steerer=None):
+    responses = []
+    ctx = steerer if steerer is not None else nullcontext()
+    with ctx:
+        for i in tqdm(range(0, len(conversations), batch_size), leave=False):
+            batch = conversations[i:i + batch_size]
+            texts = tokenizer.apply_chat_template(
+                batch, tokenize=False, add_generation_prompt=True
+            )
+            enc = tokenizer(
+                texts, return_tensors="pt", padding=True, add_special_tokens=False
+            ).to(model.device)
 
-model_ids = {
-    "Qwen/Qwen2.5-3B-Instruct" : { # Done
-        "extraction_points": list(range(50,51)),
-        "alpha_grid_every": [2.3],
-        "k": 10,
-    },
-    # "Qwen/Qwen2.5-7B-Instruct" : { # Done
-    #     "extraction_points": list(range(35,36)),
-    #     "alpha_grid_every": [2.9],
-    #     "k": 5,
-    # },
-    # "Qwen/Qwen2.5-14B-Instruct" : { # Done
-    #     "extraction_points": list(range(47,48)),
-    #     "alpha_grid_every": [5.4],
-    #     "k": 5,
-    # },
-    # "Qwen/Qwen2.5-32B-Instruct" : { 
-    #     "extraction_points": list(range(91, 92)),
-    #     "alpha_grid_every": [3.4],
-    #     "k": 15,
-    # },
-    # "meta-llama/Llama-3.2-3B-Instruct" : { # Done
-    #     "extraction_points": list(range(28, 29)),
-    #     "alpha_grid_every": [1.8],
-    #     "k": 4,
-    # },
-    # "meta-llama/Llama-3.1-8B-Instruct" : { # Done
-    #     "extraction_points": list(range(25, 26)),
-    #     "alpha_grid_every": [1.6],
-    #     "k": 9,
-    # },
-    # "google/gemma-2-9b-it" : { 
-    #     "extraction_points": list(range(44, 45)),
-    #     "alpha_grid_every": [5.1],
-    #     "relocate_mode": True,
-    #     "k": 10,
-    # },
-}
+            gen = model.generate(
+                **enc,
+                max_new_tokens=max_new_tokens,
+                do_sample=False,              # tương đương temperature=0
+                temperature=None, top_p=None, top_k=None,
+                repetition_penalty=1.0,       # Qwen mặc định 1.05 trong generation_config
+                pad_token_id=tokenizer.pad_token_id,
+            )
+            new_tokens = gen[:, enc["input_ids"].shape[1]:]
+            responses.extend(tokenizer.batch_decode(new_tokens, skip_special_tokens=True))
+    return responses
 
-# Extraction Point Hyperparameters to Tune.
-adaptive_mode = 11
 
-overwrite_mode = True
-original_norm_mode = False # If True, we add the unnormed norm into the original param grid
+# --------------------------------------------------------------------------
+# 3. Thí nghiệm
+# --------------------------------------------------------------------------
+def main():
+    from llm_activation_control.utils import get_input_data
 
-batch_size = 32
-lmda = "adaptive"
-sim = "adaptive_gaussian"
-no_pc_grid = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]
-new_adaptive = False
-max_pc = 15
+    start_time = datetime.datetime.now()
+    MODEL_CACHE_DIR = "./huggingface/hub"
+    data_type = "harmful"
+    language_id = "en"
 
-sampling_params = SamplingParams(temperature=0, max_tokens=512)
-    
+    model_ids = {
+        "Qwen/Qwen2.5-3B-Instruct": {
+            "extraction_points": list(range(50, 51)),
+            "alpha_grid_every": [2.3],
+            "k": 10,
+        },
+    }
 
-for model_id in model_ids:
-    logger.info(f"Processing model: {model_id}")
+    overwrite_mode = True
+    batch_size = 16
+    max_new_tokens = 512
+    lmda = "adaptive"
+    sim = "adaptive_gaussian"
+    no_pc_grid = list(range(1, 16))
+    max_pc = 15
 
-    model_family, model_name = model_id.split("/")
+    for model_id, hp in model_ids.items():
+        logger.info(f"Processing model: {model_id}")
+        model_family, model_name = model_id.split("/")
+        relocate_mode = hp.get("relocate_mode", False) if "gemma" in model_id.lower() else False
+        k = hp["k"]
+        output_path = (Path("output") / model_name / "CHaRS_PCT"
+                       / f"k{k}_sim{sim}_lambda{lmda}_maxpc{max_pc}")
+        output_layers = output_path / "layers"
+        output_path.mkdir(parents=True, exist_ok=True)
 
-    # Load Hyper Params
-    extraction_points = model_ids[model_id]["extraction_points"]
-    alpha_grid_every = model_ids[model_id]["alpha_grid_every"]
-    k = model_ids[model_id]["k"]
-    relocate_mode = False
-    if "gemma" in model_id or "Gemma" in model_id:
-        relocate_mode = model_ids[model_id]["relocate_mode"]
+        tokenizer = AutoTokenizer.from_pretrained(model_id, cache_dir=MODEL_CACHE_DIR)
+        tokenizer.padding_side = "left"
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
 
-    output_path = Path("output") / model_name / "CHaRS_PCT" / f"k{k}_sim{sim}_lambda{lmda}_maxpc{max_pc}"
-    output_layers = output_path / "layers"
+        model = AutoModelForCausalLM.from_pretrained(
+            model_id, torch_dtype=torch.bfloat16,
+            device_map="cuda:0", cache_dir=MODEL_CACHE_DIR,
+        ).eval()
 
-    data_train, data_test = get_input_data(data_type, language_id)
-
-    llm = LLM(
-        model=model_id,
-        enable_control_vector=True,
-        max_control_vectors=1,
-        max_seq_len_to_capture=8192,
-        download_dir = MODEL_CACHE_DIR,
-        # gpu_memory_utilization=0.7,
-        enforce_eager = True,
-    )
-
-    conversations = [
-        [
-            {
-                "role": "user",
-                "content": message,
-            }
-        ]
-        for message in data_test
-    ]
-    print(conversations)
-
-    for no_pc in no_pc_grid:
-
-        logger.info(f"Number of PC's: {no_pc}")
-
-        # baseline_responses = []
-        logger.info(f"=== Processing Baseline")
-
-        outputs = llm.chat(
-            conversations,
-            sampling_params=sampling_params,
-            # chat_template=chat_template,
+        _, data_test = get_input_data(data_type, language_id)
+        conversations = [[{"role": "user", "content": m}] for m in data_test]
+        logger.info("=== Processing Baseline")
+        baseline_responses = generate_responses(
+            model, tokenizer, conversations, batch_size, max_new_tokens
         )
-        baseline_responses = [item.outputs[0].text for item in outputs]
-        with open(output_path / f"nonparam-{data_type}-{language_id}-baseline.json", "w") as f:
-            json.dump(baseline_responses, f, indent=4)
+        with open(output_path / f"nonparam-{data_type}-{language_id}-baseline.json",
+                  "w", encoding="utf-8") as f:
+            json.dump(baseline_responses, f, indent=4, ensure_ascii=False)
 
-        for ex_pt in extraction_points:
-            
-            # Obtain the steering file
-            if relocate_mode:
-                output_layers_ex_pt = output_layers / f"r_{str(ex_pt)}"
-                logger.info(f"=== Processing extraction point r_{ex_pt}")
-            else:
-                output_layers_ex_pt = output_layers / str(ex_pt)
-                logger.info(f"=== Processing extraction point {ex_pt}")
+        for ex_pt in hp["extraction_points"]:
+            tag = f"r_{ex_pt}" if relocate_mode else str(ex_pt)
+            output_layers_ex_pt = output_layers / tag
+            logger.info(f"=== Processing extraction point {tag}")
+            config_files = sorted(output_layers_ex_pt.glob(f"steering_config-{language_id}-*.npy"))
+            if not config_files:
+                logger.warning("No steering config found in %s", output_layers_ex_pt)
+                continue
+            config_file = config_files[0]
+            logger.info(f"config file: {config_file}")
 
-            # Construct the full alpha grid
-            if original_norm_mode:
-                raise NotImplementedError
-            else:
-                alpha_grid = alpha_grid_every.copy()
-            
-            steered_responses = {}
+            # Load precomputed PCA from CHaRS_PCT.ipynb once per extraction point.
+            steerer = CHaRSPCTSteerer(model, config_file, alpha=0, max_pc=max_pc)
+            for no_pc in no_pc_grid:
+                logger.info(f"Number of PCs: {no_pc}")
+                responses_file = output_layers_ex_pt / f"pcsteer_{sim}_pc{no_pc}-{data_type}-{language_id}.json"
+                steered_responses = {}
+                if responses_file.exists() and not overwrite_mode:
+                    with open(responses_file, "r", encoding="utf-8") as f:
+                        steered_responses = json.load(f)
 
-            responses_file = (
-                output_layers_ex_pt / f"pcsteer_{sim}_pc{no_pc}-{data_type}-{language_id}.json"
-            )
+                steerer.no_pc = no_pc
+                for alpha in hp["alpha_grid_every"]:
+                    logger.info(f"Steering at alpha: {alpha}")
+                    steerer.alpha = float(alpha)
+                    steered_responses[alpha] = generate_responses(
+                        model, tokenizer, conversations, batch_size, max_new_tokens, steerer=steerer
+                    )
 
-            if os.path.exists(responses_file) and not overwrite_mode:
-                logger.info(f"=== Loading Existing File...")
-                with open(responses_file, "r", encoding="utf-8") as f:
-                    steered_responses = json.load(f)
+                with open(responses_file, "w", encoding="utf-8") as f:
+                    json.dump(steered_responses, f, indent=4, ensure_ascii=False)
+            del steerer
 
-            ex_pt_files = output_layers_ex_pt.glob(f"steering_config-en-*.npy")
-            # logger.info(list(ex_pt_files))
-            # logger.info(len(list(ex_pt_files)))
-            ex_pt_steering_config_file = list(ex_pt_files)[0]
-            logger.info(f"config file: {ex_pt_steering_config_file}")
+        del model
+        torch.cuda.empty_cache()
 
-            for alpha in alpha_grid:
-                logger.info(f"Steering at alpha: {alpha}")
-                control_vector_name = f"{ex_pt_steering_config_file.stem}-target_alpha_{alpha}-no_pc{no_pc}"
-                control_vector_id = abs(hash((control_vector_name, alpha))) % 999999
-                logger.info(f"control_vector name: {control_vector_name}")
-                logger.info(f"control_vector id: {control_vector_id}")
-                control_vector_request = ControlVectorRequest(
-                    control_vector_name=control_vector_name,
-                    control_vector_id=control_vector_id,
-                    control_vector_local_path=ex_pt_steering_config_file,
-                    scale=alpha,
-                    # target_degree=degree,
-                    keep_norm=False,
-                    adaptive_mode=adaptive_mode,
-                    similarity_kernel=sim,
-                    no_of_pc=no_pc,
-                )
-
-                outputs = llm.chat(
-                    conversations,
-                    sampling_params=sampling_params,
-                    # chat_template=chat_template,
-                    control_vector_request=control_vector_request,
-                )
-                steered_responses[alpha] = [item.outputs[0].text for item in outputs]
-
-            logger.info(
-                f"Saving responses for {model_name} extraction point {ex_pt} with adaptive mode: {adaptive_mode}"
-            )
-
-            with open(
-                responses_file,
-                "w",
-                encoding="utf-8",
-            ) as f:
-                json.dump(steered_responses, f, indent=4, ensure_ascii=False)
+    print("Total Time Taken:", datetime.datetime.now() - start_time)
 
 
-    del llm
-
-end_time = datetime.datetime.now()
-print("Total Time Taken:", end_time - start_time)
+if __name__ == "__main__":
+    main()
