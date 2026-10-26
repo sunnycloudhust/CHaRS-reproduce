@@ -1,103 +1,68 @@
-# Content
+# TinyBench results
 
-We list the main components found in this directory:
-  - `CHaRS_XXX.ipynb`: Extraction of Activations, computations of Cluster Centroids, OT Mappings, Principal Components etc, and generates the steering config file in `/outputs` for the generations under steering. XXX Represents the method and configuration.
-  - `generate_responsees_XXX.py`: generation of steered responses (with our vLLM fork) used for evaluation; XXX represents the respective method and configuration.
-  - `evaluate_jailbreak_XXX.py`: evaluation on `HarmBench`; XXX represents the respective method and configuration.
-  - `eval_tinybench.sh`: script to run the evaluation of tinyBenchmarks. (with `github.com/EleutherAI/lm-evaluation-harness`)
-  - `endpoint.py`: an OpenAI-compatible endpoint server that hosts the respective model that we want to run language evaluations on.
+Tổng hợp kết quả từ [`tinybench_summary.csv`](tinybench_summary.csv) cho 5 benchmark và 6 model.
 
+## Cách đọc
 
-# Installation
+- Điểm được ghi theo thang 0–1; cao hơn là tốt hơn.
+- `K=1`, `K=5` và `K=10` được trình bày riêng; không gộp trung bình giữa các K.
+- `AA` là Activation Addition; `DA` là Directional Ablation; `PCT` là CHaRS-PCT.
+- Ô `—` nghĩa là không có kết quả trong dữ liệu đã tải.
+- Khi có nhiều file kết quả trong cùng cấu hình, dùng file mới nhất. Nếu có nhiều cấu hình cùng benchmark/model/phương pháp/K, điểm được lấy trung bình.
 
-1. Create conda environment:
+## Kết quả
 
-```bash
-conda create -n chars python=3.11
-conda activate chars
-pip install -r requirements.txt
-conda deactivate
-cd ..
-```
+### tinyArc
 
-2. Install a forked copy of vLLM from https://github.com/lone17/vllm/tree/main, under the feat/steering_temp branch:
+| Model | Baseline | CHaRS AA (K=1) | CHaRS AA (K=5) | CHaRS AA (K=10) | CHaRS DA (K=1) | CHaRS DA (K=5) | CHaRS DA (K=10) | CHaRS-PCT AA (K=1) | CHaRS-PCT AA (K=5) | CHaRS-PCT AA (K=10) | CHaRS-PCT DA (K=1) | CHaRS-PCT DA (K=5) | CHaRS-PCT DA (K=10) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Qwen2.5-3B-Instruct | 0.628182 | 0.357033 | 0.351745 | 0.358202 | 0.610518 | 0.633089 | 0.621474 | 0.351745 | 0.360856 | 0.365548 | 0.610518 | 0.610518 | 0.610518 |
+| Qwen2.5-7B-Instruct | 0.672883 | 0.369578 | 0.367752 | 0.367752 | 0.662484 | 0.668692 | 0.662484 | 0.383357 | 0.367752 | 0.381689 | 0.668692 | 0.662484 | 0.668692 |
+| Qwen2.5-14B-Instruct | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| Llama-3.1-8B-Instruct | 0.653330 | 0.574851 | — | 0.574851 | 0.661172 | — | 0.661172 | 0.567131 | — | 0.567131 | 0.653330 | — | 0.661172 |
+| Llama-3.2-3B-Instruct | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| gemma-2-9b-it | 0.693119 | 0.665176 | — | 0.665176 | 0.693119 | — | 0.693119 | 0.654139 | — | 0.654139 | 0.664817 | — | 0.676548 |
 
-```bash
-cd ../vllm/
-git checkout feat/steering_temp
-conda activate chars
-python use_existing_torch.py
-pip install -r requirements-build.txt
-pip install --editable . --no-build-isolation
-conda deactivate
-cd ..
-```
+### tinyHellaswag
 
-3. Create a separated conda environment for lm-evaluation-harness and install it
-   following https://github.com/EleutherAI/lm-evaluation-harness:
+| Model | Baseline | CHaRS AA (K=1) | CHaRS AA (K=5) | CHaRS AA (K=10) | CHaRS DA (K=1) | CHaRS DA (K=5) | CHaRS DA (K=10) | CHaRS-PCT AA (K=1) | CHaRS-PCT AA (K=5) | CHaRS-PCT AA (K=10) | CHaRS-PCT DA (K=1) | CHaRS-PCT DA (K=5) | CHaRS-PCT DA (K=10) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Qwen2.5-3B-Instruct | 0.698958 | 0.487735 | 0.487735 | 0.487735 | 0.709534 | 0.722846 | 0.716136 | 0.487735 | 0.487735 | 0.487735 | 0.714457 | 0.723069 | 0.723069 |
+| Qwen2.5-7B-Instruct | 0.755641 | 0.477216 | 0.473481 | 0.473481 | 0.784146 | 0.760027 | 0.764990 | 0.477216 | 0.477216 | 0.477216 | 0.760814 | 0.760814 | 0.792614 |
+| Qwen2.5-14B-Instruct | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| Llama-3.1-8B-Instruct | 0.813956 | 0.756402 | — | 0.764622 | 0.816461 | — | 0.812652 | 0.764622 | — | 0.764622 | 0.806065 | — | 0.816461 |
+| Llama-3.2-3B-Instruct | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| gemma-2-9b-it | 0.808056 | 0.801938 | — | 0.801938 | 0.807733 | — | 0.813533 | 0.801689 | — | 0.801689 | 0.817821 | — | 0.821023 |
 
-```bash
-cd ..
-conda create -n lm_eval python=3.11
-conda activate lm_eval
-git clone --depth 1 https://github.com/EleutherAI/lm-evaluation-harness
-cd lm-evaluation-harness
-pip install -e ."[api]"
-pip install git+https://github.com/felipemaiapolo/tinyBenchmarks
-conda deactivate
-cd ..
-```
+### tinyMMLU
 
-# Generating the results
+| Model | Baseline | CHaRS AA (K=1) | CHaRS AA (K=5) | CHaRS AA (K=10) | CHaRS DA (K=1) | CHaRS DA (K=5) | CHaRS DA (K=10) | CHaRS-PCT AA (K=1) | CHaRS-PCT AA (K=5) | CHaRS-PCT AA (K=10) | CHaRS-PCT DA (K=1) | CHaRS-PCT DA (K=5) | CHaRS-PCT DA (K=10) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Qwen2.5-3B-Instruct | 0.679775 | 0.290748 | 0.279852 | 0.279852 | 0.672466 | 0.669076 | 0.673855 | 0.279852 | 0.279852 | 0.290748 | 0.673855 | 0.673855 | 0.673855 |
+| Qwen2.5-7B-Instruct | 0.732136 | 0.543442 | 0.555353 | 0.555353 | 0.729507 | 0.729507 | 0.729507 | 0.543442 | 0.543442 | 0.555353 | 0.729507 | 0.729507 | 0.729507 |
+| Qwen2.5-14B-Instruct | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| Llama-3.1-8B-Instruct | 0.629024 | 0.649803 | — | 0.644718 | 0.636384 | — | 0.641217 | 0.649803 | — | 0.644718 | 0.636384 | — | 0.636384 |
+| Llama-3.2-3B-Instruct | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| gemma-2-9b-it | — | — | — | — | — | — | — | — | — | — | — | — | — |
 
-1. Run the `CHaRS_XXX.ipynb` notebook for any choice of configuration (XXX) to extract the activations and constructs the steering configurations file necessary for generations under steering for the desired model. The configuration file will generated in the `output/` folder.
-2. Run the `generate_responsees_XXX.py` script to generate the steered responses for the desired model. The generations will also be saved in `output/`. 
-3. The `evaluate_jailbreak.py` script will evaluate the generations on `HarmBench`. The output will be saved in the `output/` folder.
-4. Run the `eval_tinybench.sh` script in the `lm-eval` environment to evaluate the steered
-   generation on tinyBenchmarks.
-   - You must first serve run `endpoint.py` script to serve an OpenAI-compatible endpoint
-     server with CHaRS/CHaRS_PCT supported. Change the model name in the script to the
-     one you want to evaluate.
-   - Change the `MODELS` and `port` variables in the `eval_tinybench.sh` script to the models you want to
-     evaluate and the port of the endpoint server.
-   - The output will be saved in the `benchmarks/` folder.
+### tinyTruthfulQA
 
-## Running generation with limited resources
+| Model | Baseline | CHaRS AA (K=1) | CHaRS AA (K=5) | CHaRS AA (K=10) | CHaRS DA (K=1) | CHaRS DA (K=5) | CHaRS DA (K=10) | CHaRS-PCT AA (K=1) | CHaRS-PCT AA (K=5) | CHaRS-PCT AA (K=10) | CHaRS-PCT DA (K=1) | CHaRS-PCT DA (K=5) | CHaRS-PCT DA (K=10) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Qwen2.5-3B-Instruct | 0.572256 | 0.429953 | 0.429617 | 0.429750 | 0.572622 | 0.567673 | 0.569404 | 0.430387 | 0.430685 | 0.430282 | 0.570662 | 0.570634 | 0.570690 |
+| Qwen2.5-7B-Instruct | 0.560128 | 0.577070 | 0.577068 | 0.579299 | 0.545111 | 0.545330 | 0.543851 | 0.579642 | 0.578550 | 0.578120 | 0.547446 | 0.546804 | 0.545141 |
+| Qwen2.5-14B-Instruct | 0.652392 | 0.649204 | 0.649158 | 0.648244 | 0.647224 | 0.649330 | 0.647254 | 0.649135 | 0.651473 | 0.650597 | 0.646739 | 0.646218 | 0.649700 |
+| Llama-3.1-8B-Instruct | 0.544284 | 0.562166 | — | 0.560485 | 0.547580 | — | 0.548212 | 0.562150 | — | 0.560755 | 0.548824 | — | 0.548081 |
+| Llama-3.2-3B-Instruct | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| gemma-2-9b-it | 0.547686 | 0.542243 | — | 0.542458 | 0.543945 | — | 0.542620 | 0.573063 | — | 0.574707 | 0.531147 | — | 0.532429 |
 
-The `generate_responses_*.py` scripts use `CHARS_DEVICE_MAP` to choose how
-layers are placed across visible GPUs. Weights that do not fit in GPU memory
-can be placed in CPU RAM or the offload directory. This is model sharding, not
-data parallelism. If a generation batch runs out of CUDA memory, the runtime
-retries it with a smaller batch down to one sample. A single sample can still
-fail if the model or its KV cache is too large.
+### tinyWinogrande
 
-Set these environment variables before running a script:
-
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `CHARS_MODELS` | all models in the script | Comma-separated model IDs to run |
-| `CHARS_BATCH_SIZE` | `8` | Initial batch size; use `1` for low VRAM |
-| `CHARS_MAX_NEW_TOKENS` | `128` | Generation length; lower values reduce KV-cache use |
-| `CHARS_MODEL_DTYPE` | `auto` | `auto`, `bfloat16`, `float16`, or `float32` |
-| `CHARS_DEVICE_MAP` | `sequential` | `auto`, `balanced`, `balanced_low_0`, or `sequential` |
-| `CHARS_GPU_RESERVE_GIB` | `2` | GPU memory left free for runtime overhead |
-| `CHARS_CPU_RESERVE_GIB` | `4` | Host RAM left free for the operating system |
-| `CHARS_OFFLOAD_DIR` | `./model_offload` | Directory for disk-offloaded weights |
-
-For example, from this directory, start with one of the script's configured
-models, batch size one, and shorter responses:
-
-```bash
-CHARS_MODELS=google/gemma-2-9b-it \
-CHARS_BATCH_SIZE=1 \
-CHARS_MAX_NEW_TOKENS=128 \
-CHARS_OFFLOAD_DIR=/path/with/free/disk/model_offload \
-python generate_responses_CHaRS_AA.py
-```
-
-On machines without a CUDA GPU, the loader falls back to CPU-only `float32`.
-This can be very slow and requires substantial RAM; disk offload also needs
-enough free disk space and is much slower than keeping weights in RAM. The
-scripts currently configure 9B and 14B models, so a genuinely small machine may
-need steering configurations for a smaller model before these experiments can
-run.
+| Model | Baseline | CHaRS AA (K=1) | CHaRS AA (K=5) | CHaRS AA (K=10) | CHaRS DA (K=1) | CHaRS DA (K=5) | CHaRS DA (K=10) | CHaRS-PCT AA (K=1) | CHaRS-PCT AA (K=5) | CHaRS-PCT AA (K=10) | CHaRS-PCT DA (K=1) | CHaRS-PCT DA (K=5) | CHaRS-PCT DA (K=10) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Qwen2.5-3B-Instruct | 0.658970 | 0.590035 | 0.583349 | 0.585072 | 0.678932 | 0.678237 | 0.677401 | 0.586692 | 0.586692 | 0.590035 | 0.678716 | 0.669352 | 0.684316 |
+| Qwen2.5-7B-Instruct | 0.742573 | 0.523641 | 0.507598 | 0.491082 | 0.755942 | 0.744536 | 0.735980 | 0.513317 | 0.501212 | 0.501212 | 0.735492 | 0.735980 | 0.714837 |
+| Qwen2.5-14B-Instruct | 0.745818 | 0.718652 | 0.713686 | 0.703764 | 0.745818 | 0.727096 | 0.745818 | 0.718652 | 0.722013 | 0.713686 | 0.750745 | 0.733775 | 0.745818 |
+| Llama-3.1-8B-Instruct | 0.738121 | 0.740090 | — | 0.737400 | 0.746090 | — | 0.746090 | 0.740090 | — | 0.737981 | 0.738369 | — | 0.735541 |
+| Llama-3.2-3B-Instruct | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| gemma-2-9b-it | 0.772368 | 0.788828 | — | 0.795376 | 0.779954 | — | 0.768728 | 0.791052 | — | 0.778726 | 0.770527 | — | 0.775469 |
